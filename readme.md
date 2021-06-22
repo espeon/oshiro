@@ -1,0 +1,2 @@
+## oshiro
+dumb bot lol
