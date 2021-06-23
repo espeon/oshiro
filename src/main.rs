@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // Initialize the tracing subscriber.
     tracing_subscriber::fmt::init();
 
-    let token = env::var("DISCORD_TOKEN").expect("Expected a prefix in the environment.");
+    let token = env::var("DISCORD_TOKEN").expect("Expected a Discord bot token in the environment.");
 
     let http = Client::new(&token);
 
@@ -45,12 +45,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         cluster_spawn.up().await;
     });
 
-    let f = CommandFramework::create().await;
+    let framework = CommandFramework::create().await;
 
     let oshiro_ctx = Arc::new(
         OshiroContext{
-            framework: f,
-            http:http,
+            framework,
+            http,
         }
     );
 
