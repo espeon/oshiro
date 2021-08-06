@@ -11,7 +11,7 @@ steps:
   - name: test-dockerfile
     image: plugins/docker
     settings:
-      repo: iriie/maki
+      repo: miauwa/oshiro
       dry_run: true
     when:
       event: [pull_request]
@@ -19,7 +19,7 @@ steps:
   - name: build-and-push-to-dockerhub
     image: plugins/docker
     settings:
-      repo: iriie/maki
+      repo: miauwa/oshiro
       auto_tag: true
       username:
         from_secret: docker_username
