@@ -1,7 +1,7 @@
 type: docker
 
 kind: pipeline
-name: default
+name: oshiro
 
 platform:
   os: linux
