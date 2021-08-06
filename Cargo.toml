@@ -16,6 +16,7 @@ twilight-http = "0.5.0"
 twilight-model = "0.5.0"
 twilight-standby = "0.5.0"
 dotenv = "0.15.0"
+chrono = "0.4.19"
 
 [dependencies.tokio]
 version = "^1.0"

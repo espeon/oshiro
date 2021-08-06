@@ -2,9 +2,12 @@ use std::{collections::HashMap, error::Error, pin::Pin, sync::Arc};
 
 use twilight_http::Client;
 
-use futures::{Future};
+use futures::Future;
 
 use crate::ctx::OshiroContext;
+
+use chrono::DateTime;
+use chrono::Utc;
 
 type OshiroResult<T = ()> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -37,31 +40,32 @@ pub mod macros {
 
     #[macro_export]
     macro_rules! cmd {
-        ($e: expr) => {{
+        ($func: ident, $name: expr, $desc: expr) => {{
             Arc::new(CommandInstance {
-                name: "hi".to_string(),
-                description: "hi".to_string(),
-                exec: Box::new(move |ctx| Box::pin($e(ctx))),
+                name: $name,
+                description: $desc,
+                exec: Box::new(move |ctx| Box::pin($func(ctx))),
             })
         }};
     }
 }
 
 impl CommandFramework {
-    pub async fn create() -> Self {
+    pub async fn create() -> OshiroResult<Self> {
         let mut f = CommandFramework::default();
-        match f.add_command(cmd!(test_commander)).await{
-            Ok(_) => println!("works"),
-            Err(_) => todo!("god fuck this"),
-        };
-        f
+        f.add_command(cmd!(
+            test_commander,
+            "test".to_string(),
+            "test command".to_string()
+        ))
+        .await?;
+        f.add_command(cmd!(ping, "ping".to_string(), "just 4 fun".to_string()))
+            .await?;
+        Ok(f)
     }
 
     pub async fn add_command(&mut self, cmd: Arc<CommandInstance>) -> OshiroResult<()> {
-        self.commands.insert(
-            "sal".to_string(),
-            cmd,
-        );
+        self.commands.insert(cmd.name.clone(), cmd);
         Ok(())
     }
 
@@ -69,21 +73,20 @@ impl CommandFramework {
         &self,
         prefix: &str,
         msg: Box<twilight_model::gateway::payload::MessageCreate>,
-        ctx: Arc<OshiroContext>
+        ctx: Arc<OshiroContext>,
     ) -> OshiroResult<()> {
-        let message = msg
-        .content
-        .strip_prefix(prefix)
-        .unwrap_or(&msg.content);
-        if message
-            .starts_with("hello")
-        {
+        dbg!(prefix);
+
+        let message = msg.content.strip_prefix(prefix).unwrap_or(&msg.content);
+        dbg!(message);
+        dbg!(self.commands.keys());
+        if message.starts_with("hello") {
             test_command(msg, ctx.http.clone()).await?
         } else if self.commands.contains_key(message) {
             let v = self.commands.get(message).unwrap();
-            let cctx = CommandContext{
+            let cctx = CommandContext {
                 oshiro: Arc::clone(&ctx),
-                msg
+                msg,
             };
             (v.exec)(cctx).await?;
         }
@@ -93,10 +96,59 @@ impl CommandFramework {
 
 async fn test_commander(ctx: CommandContext) -> OshiroResult<()> {
     let a = &ctx.msg.0.author.name;
-    ctx.oshiro.http
+    ctx.oshiro
+        .http
         .create_message(ctx.msg.channel_id)
         .content(format!("hello {}, from Test Commander", a))?
         .await?;
+    Ok(())
+}
+struct Timer {
+    start: DateTime<Utc>,
+}
+
+impl Timer {
+    pub fn new() -> Self {
+        Timer { start: Utc::now() }
+    }
+
+    pub fn elapsed_ms(&self) -> i64 {
+        Utc::now()
+            .signed_duration_since(self.start)
+            .num_milliseconds()
+    }
+}
+async fn ping(ctx: CommandContext) -> OshiroResult<()> {
+    let timer = Timer::new();
+    let sent_msg = ctx
+        .oshiro
+        .http
+        .create_message(ctx.msg.channel_id)
+        .content(format!("ping!!!"))?
+        .await?;
+    let msg_ms = timer.elapsed_ms();
+
+    let mut shard_latencies = vec![];
+
+    for shard in ctx.oshiro.cluster.shards() {
+        let info = shard.info()?;
+        let avg = match info.latency().average() {
+            Some(x) =>         format!(
+                "{:.3}",
+                x.as_secs() as f64 / 1000.0 + f64::from(x.subsec_nanos()) * 1e-6
+            ),
+            None => "N/A".to_string(),
+        };
+        shard_latencies.push(format!("shard id {} - ws avg: {}ms - hb: {}", info.id(), avg, info.latency().heartbeats()))
+    }
+
+    let e = ctx.oshiro
+    .http
+    .update_message(sent_msg.channel_id, sent_msg.id)
+    .content(format!("pong!\nhttp: {}ms\n{}", msg_ms, shard_latencies.join("\n")))?;
+
+e.await?;
+
     Ok(())
 }
 

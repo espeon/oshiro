@@ -45,12 +45,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         cluster_spawn.up().await;
     });
 
-    let framework = CommandFramework::create().await;
+    let framework = CommandFramework::create().await?;
 
     let oshiro_ctx = Arc::new(
         OshiroContext{
             framework,
             http,
+            cluster
         }
     );
 
@@ -68,6 +69,8 @@ async fn handle_event(
     event: Event,
     ctx: Arc<OshiroContext>
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let prefix = env::var("PREFIX").expect("Expected a prefix in the environment.");
+    dbg!(&prefix);
     match event {
         Event::MessageCreate(msg) if msg.content.starts_with("%u") => {
             let uwued = msg
@@ -80,8 +83,8 @@ async fn handle_event(
                 .replace("na", "nya");
             ctx.http.create_message(msg.channel_id).content(uwued)?.await?;
         }
-        Event::MessageCreate(msg) if msg.content.starts_with("%") => {
-            ctx.framework.parse_command(&"%", msg, Arc::clone(&ctx)).await?;
+        Event::MessageCreate(msg) if msg.content.starts_with(&prefix) => {
+            ctx.framework.parse_command(&prefix, msg, Arc::clone(&ctx)).await?;
         }
         Event::Ready(_) => {
             println!("Shard {} is ready", shard_id)
