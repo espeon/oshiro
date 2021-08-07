@@ -10,7 +10,7 @@ platform:
 steps:
   - name: clone
     image: drone/git
-    
+
   - name: test-dockerfile
     image: plugins/docker
     settings:
