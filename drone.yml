@@ -3,24 +3,23 @@ type: docker
 name: oshiro
 
 steps:
-  - name: test-dockerfile
-    image: plugins/docker
-    settings:
-      repo: miauwa/oshiro
-      dry_run: true
-    when:
-      event: [pull_request]
-
-  - name: build-and-push-to-dockerhub
-    image: plugins/docker
-    settings:
-      repo: miauwa/oshiro
-      auto_tag: true
-      username:
-        from_secret: docker_username
-      password:
-        from_secret: docker_password
-    when:
-      ref:
-        - refs/tags/*
-        - refs/heads/master
+- name: test-dockerfile
+  image: plugins/docker
+  settings:
+    repo: miauwa/oshiro
+    dry_run: true
+  when:
+    event: [pull_request]
+- name: build-and-push-to-dockerhub
+  image: plugins/docker
+  settings:
+    repo: miauwa/oshiro
+    auto_tag: true
+    username:
+      from_secret: docker_username
+    password:
+      from_secret: docker_password
+  when:
+    ref:
+      - refs/tags/*
+      - refs/heads/master
