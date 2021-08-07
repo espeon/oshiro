@@ -1,34 +1,9 @@
-type: docker
-
 kind: pipeline
-name: oshiro
-
-platform:
-  os: linux
-  arch: amd64
+type: docker
+name: default
 
 steps:
-  - name: clone
-    image: drone/git
-
-  - name: test-dockerfile
-    image: plugins/docker
-    settings:
-      repo: miauwa/oshiro
-      dry_run: true
-    when:
-      event: [pull_request]
-
-  - name: build-and-push-to-dockerhub
-    image: plugins/docker
-    settings:
-      repo: miauwa/oshiro
-      auto_tag: true
-      username:
-        from_secret: docker_username
-      password:
-        from_secret: docker_password
-    when:
-      ref:
-        - refs/tags/*
-        - refs/heads/master
+- name: foo
+  image: this-is-an-invalid-image-that-doest-exist
+  commands:
+  - echo hello
