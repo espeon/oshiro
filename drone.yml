@@ -1,9 +1,26 @@
 kind: pipeline
 type: docker
-name: default
+name: oshiro
 
 steps:
-- name: foo
-  image: this-is-an-invalid-image-that-doest-exist
-  commands:
-  - echo hello
+  - name: test-dockerfile
+    image: plugins/docker
+    settings:
+      repo: miauwa/oshiro
+      dry_run: true
+    when:
+      event: [pull_request]
+
+  - name: build-and-push-to-dockerhub
+    image: plugins/docker
+    settings:
+      repo: miauwa/oshiro
+      auto_tag: true
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+    when:
+      ref:
+        - refs/tags/*
+        - refs/heads/master
