@@ -22,4 +22,4 @@ steps:
   when:
     ref:
       - refs/tags/*
-      - refs/heads/master
+      - refs/heads/main
