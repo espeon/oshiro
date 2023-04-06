@@ -7,7 +7,8 @@ FROM rust:latest as builder
 ARG project_name
 
 # Create layer for the dependencies, so we don't have to rebuild them later
-RUN apt-get install cmake build-essential
+RUN apt-get update \
+    && apt-get install -y cmake build-essential
 WORKDIR /usr/src
 RUN USER=root cargo new $project_name
 WORKDIR /usr/src/$project_name
