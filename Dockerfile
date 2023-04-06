@@ -13,6 +13,7 @@ WORKDIR /usr/src
 RUN USER=root cargo new $project_name
 WORKDIR /usr/src/$project_name
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo/ ./
 RUN cargo build --release
 RUN rm src/*.rs
 
