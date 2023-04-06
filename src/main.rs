@@ -3,14 +3,13 @@ use std::{
     env,
     error::Error,
     sync::Arc,
-    time::{SystemTime, Duration},
+    time::{Duration, SystemTime},
 };
 use tokio::sync::Mutex;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{
     stream::{self, ShardEventStream},
-    CloseFrame, Config, ConfigBuilder, Event, EventTypeFlags, Intents, MessageSender, Shard,
-    ShardId,
+    Config, ConfigBuilder, Event, EventTypeFlags, Intents, ShardId,
 };
 use twilight_http::Client as HttpClient;
 

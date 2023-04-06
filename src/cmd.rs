@@ -86,7 +86,7 @@ impl CommandFramework {
         let message = msg.content.strip_prefix(prefix).unwrap_or(&msg.content);
         tracing::trace!(message);
         tracing::trace!("{:?}", self.commands.keys());
-        let possible_cmd = message.split(" ").next().unwrap_or(&"Error");
+        let possible_cmd = message.split(' ').next().unwrap_or("Error");
         if self.commands.contains_key(possible_cmd) {
             let v = self.commands.get(possible_cmd).unwrap();
             let cctx = CommandContext {
@@ -137,7 +137,7 @@ async fn ping(ctx: CommandContext) -> OshiroResult<()> {
     let sent_msg = oshi
         .http
         .create_message(ctx.msg.channel_id)
-        .content(&format!("ping!!!"))?
+        .content("ping!!!")?
         .await?;
 
     let msg_ms = timer.elapsed_ms();
@@ -178,17 +178,16 @@ async fn uwu(ctx: CommandContext) -> OshiroResult<()> {
     let step1 = ctx
         .stripped
         .to_lowercase()
-        .replace("l", "w")
-        .replace("r", "w")
+        .replace(['l', 'r'], "w")
         .replace("fu", "fwu")
         .replace("na", "nya")
         .replace("ove", "uv");
 
     let mut dashy = true;
     let mut step2: Vec<String> = Vec::new();
-    step1.split(" ").for_each(|word| {
-        if word.starts_with("y") {
-            if dashy == false {
+    step1.split(' ').for_each(|word| {
+        if word.starts_with('y') {
+            if !dashy {
                 dashy = true;
                 step2.push(word.to_string())
             } else {
