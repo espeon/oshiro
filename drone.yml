@@ -14,7 +14,12 @@ steps:
   image: plugins/docker
   settings:
     repo: miauwa/oshiro
-    auto_tag: true
+    tags: 
+      - "${DRONE_BRANCH}"
+      - "${DRONE_BRANCH}-${DRONE_COMMIT}"
+    cache_from:
+      - "miauwa/oshiro:master"
+      - "miauwa/oshiro:${DRONE_BRANCH}"
     username:
       from_secret: docker_username
     password:

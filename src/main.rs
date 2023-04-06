@@ -1,8 +1,18 @@
 use futures::StreamExt;
-use std::{env, error::Error, sync::Arc};
+use std::{
+    env,
+    error::Error,
+    sync::Arc,
+    time::{SystemTime, Duration},
+};
+use tokio::sync::Mutex;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
-use twilight_gateway::{Cluster, Event, EventTypeFlags, cluster::ShardScheme};
-use twilight_http::Client;
+use twilight_gateway::{
+    stream::{self, ShardEventStream},
+    CloseFrame, Config, ConfigBuilder, Event, EventTypeFlags, Intents, MessageSender, Shard,
+    ShardId,
+};
+use twilight_http::Client as HttpClient;
 
 use crate::{cmd::CommandFramework, ctx::OshiroContext};
 
@@ -16,81 +26,136 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // Initialize the tracing subscriber.
     tracing_subscriber::fmt::init();
 
-    let token = env::var("DISCORD_TOKEN").expect("Expected a Discord bot token in the environment.");
+    let token =
+        env::var("DISCORD_TOKEN").expect("Expected a Discord bot token in the environment.");
 
-    let http = Client::new(&token);
+    let http = Arc::new(HttpClient::new(token.clone()));
+    let me = http.current_user().await?.model().await?;
 
-    let me = http.current_user().await?;
-    println!("Logged in as: {}#{}", me.name, me.discriminator);
+    tracing::info!("Logged in as {}#{}", me.name, me.discriminator);
 
-    use twilight_model::gateway::Intents;
-    let wanted_intents = Intents::GUILD_MESSAGES | Intents::DIRECT_MESSAGES;
-    // wanted types of flags
-    let wanted_types = EventTypeFlags::MESSAGE_CREATE | EventTypeFlags::READY;
+    let intents =
+        Intents::MESSAGE_CONTENT | Intents::GUILD_MESSAGES | Intents::GUILD_MESSAGE_REACTIONS;
+    let flags =
+        EventTypeFlags::MESSAGE_CREATE | EventTypeFlags::READY | EventTypeFlags::INTERACTION_CREATE;
 
-    let (cluster, mut events) = Cluster::builder(&token, wanted_intents)
-        .event_types(wanted_types)
-        .shard_scheme(ShardScheme::Auto)
-        .http_client(http.clone())
-        .build()
-        .await?;
-
-    let cache = InMemoryCache::builder()
-        .resource_types(ResourceType::MESSAGE)
+    let builder = Config::builder(token.clone(), intents)
+        .event_types(flags)
         .build();
 
-    let cluster_spawn = cluster.clone();
+    fn builder_callback(_: ShardId, c: ConfigBuilder) -> Config {
+        c.build()
+    }
 
-    tokio::spawn(async move {
-        cluster_spawn.up().await;
-    });
+    let mut shards = stream::create_recommended(&http, builder, builder_callback)
+        .await?
+        .collect::<Vec<_>>();
 
-    let framework = CommandFramework::create().await?;
+    //let shard_closers: Vec<MessageSender> = shards.iter().map(Shard::sender).collect();
+    //tokio::spawn(async move {
+    //    tokio::signal::ctrl_c()
+    //        .await
+    //        .expect("Failed to listen to ctrl-c");
+    //    println!("Shutting down...");
+    //    for shard in shard_closers {
+    //        print!(".");
+    //        shard.close(CloseFrame::NORMAL).ok();
+    //    }
+    //});
 
-    let oshiro_ctx = Arc::new(
-        OshiroContext{
-            framework,
-            http,
-            cluster
+    tracing::trace!("{} shard(s) in the event stream", shards.len());
+
+    let cache = InMemoryCache::builder()
+        .resource_types(
+            ResourceType::MESSAGE
+                | ResourceType::CHANNEL
+                | ResourceType::MEMBER
+                | ResourceType::GUILD,
+        )
+        .build();
+
+    let framework = Arc::new(CommandFramework::create().await?);
+
+    let arc_cache = Arc::new(cache);
+    let mut latency = Vec::new();
+    let latency_last_checked = SystemTime::now();
+
+    for s in shards.iter() {
+        tracing::info!("Checking latency");
+        latency.push(s.latency().clone());
+    }
+
+    let oshiro_ctx = Arc::new(Mutex::new(OshiroContext {
+        framework: Arc::clone(&framework),
+        http,
+        cache: arc_cache,
+        shard_latency: latency,
+    }));
+
+    let mut event_stream = ShardEventStream::new(shards.iter_mut());
+
+    // Event loop -
+    while let Some((shard, event_result)) = event_stream.next().await {
+        if SystemTime::now() > latency_last_checked + Duration::from_secs(30) {
+            tracing::info!("Checking latency");
+            if let Some(l) = oshiro_ctx
+                .lock()
+                .await
+                .shard_latency
+                .get_mut(shard.id().number() as usize)
+            {
+                let g = shard.latency().to_owned();
+                *l = g
+            }
         }
-    );
+        let event = match event_result {
+            Ok(e) => e,
+            Err(source) => {
+                tracing::warn!(?source, "error receiving event");
 
-    while let Some((shard_id, event)) = events.next().await {
-        // println!("New Event: {:?} | ({:?})", event.kind(), event);
-        cache.update(&event);
-        tokio::spawn(handle_event(shard_id, event, Arc::clone(&oshiro_ctx)));
+                if source.is_fatal() {
+                    break;
+                }
+
+                continue;
+            }
+        };
+
+        if let Err(e) = handle_event(event, Arc::clone(&oshiro_ctx), Arc::clone(&framework)).await {
+            eprintln!("Handler error: {e}");
+        }
     }
 
     Ok(())
 }
 
 async fn handle_event(
-    shard_id: u64,
     event: Event,
-    ctx: Arc<OshiroContext>
+    ctx: Arc<Mutex<OshiroContext>>,
+    framework: Arc<CommandFramework>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    // TODO: move good_bots to somewhere else
+    let good_bots: Vec<String> = Vec::new();
     let prefix = env::var("PREFIX").expect("Expected a prefix in the environment.");
-    dbg!(&prefix);
+    tracing::trace!("The default prefix is {}", prefix);
     match event {
-        Event::MessageCreate(msg) if msg.content.starts_with("%u") => {
-            let uwued = msg
-                .content
-                .strip_prefix("%u")
-                .unwrap_or(&msg.content)
-                .to_lowercase()
-                .replace("l", "w")
-                .replace("r", "w")
-                .replace("na", "nya");
-            ctx.http.create_message(msg.channel_id).content(uwued)?.await?;
+        Event::MessageCreate(msg)
+            if msg.author.bot && !good_bots.contains(&msg.author.id.to_string()) =>
+        {
+            return Ok(())
         }
         Event::MessageCreate(msg) if msg.content.starts_with(&prefix) => {
-            ctx.framework.parse_command(&prefix, msg, Arc::clone(&ctx)).await?;
+            framework
+                .parse_command(&prefix, msg, Arc::clone(&ctx))
+                .await?;
         }
-        Event::Ready(_) => {
-            println!("Shard {} is ready", shard_id)
+        Event::MessageCreate(msg) => {
+            tracing::trace!("{}", msg.content);
         }
-        Event::ShardConnected(_) => {
-            println!("Connected on shard {}", shard_id);
+        Event::Ready(r) => {
+            if let Some(s) = r.shard {
+                tracing::info!("Shard {} is ready", s.number())
+            }
         }
         _ => {}
     }
