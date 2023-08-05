@@ -1,3 +1,4 @@
+use cmd::OshiroResult;
 use futures::StreamExt;
 use std::{
     env,
@@ -17,6 +18,7 @@ use crate::{cmd::CommandFramework, ctx::OshiroContext};
 
 pub mod cmd;
 pub mod ctx;
+pub mod slash;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -33,10 +35,20 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     tracing::info!("Logged in as {}#{}", me.name, me.discriminator);
 
+    let current_app = http.current_user_application().await?.model().await?;
+
+    let interaction = http.interaction(current_app.id);
+
+    interaction
+    .set_global_commands(&slash::commands())
+    .await?;
+
     let intents =
         Intents::MESSAGE_CONTENT | Intents::GUILD_MESSAGES | Intents::GUILD_MESSAGE_REACTIONS;
-    let flags =
-        EventTypeFlags::MESSAGE_CREATE | EventTypeFlags::READY | EventTypeFlags::INTERACTION_CREATE;
+    let flags = EventTypeFlags::MESSAGE_CREATE
+        | EventTypeFlags::READY
+        | EventTypeFlags::INTERACTION_CREATE
+        | EventTypeFlags::INTERACTION_CREATE;
 
     let builder = Config::builder(token.clone(), intents)
         .event_types(flags)
@@ -89,6 +101,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         http,
         cache: arc_cache,
         shard_latency: latency,
+        app_id: current_app.id
     }));
 
     let mut event_stream = ShardEventStream::new(shards.iter_mut());
@@ -121,7 +134,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         };
 
         if let Err(e) = handle_event(event, Arc::clone(&oshiro_ctx), Arc::clone(&framework)).await {
-            eprintln!("Handler error: {e}");
+            tracing::error!("Handler error: {e}");
         }
     }
 
@@ -132,11 +145,10 @@ async fn handle_event(
     event: Event,
     ctx: Arc<Mutex<OshiroContext>>,
     framework: Arc<CommandFramework>,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
+) -> OshiroResult<()> {
     // TODO: move good_bots to somewhere else
     let good_bots: Vec<String> = Vec::new();
     let prefix = env::var("PREFIX").expect("Expected a prefix in the environment.");
-    tracing::trace!("The default prefix is {}", prefix);
     match event {
         Event::MessageCreate(msg)
             if msg.author.bot && !good_bots.contains(&msg.author.id.to_string()) =>
@@ -148,8 +160,8 @@ async fn handle_event(
                 .parse_command(&prefix, msg, Arc::clone(&ctx))
                 .await?;
         }
-        Event::MessageCreate(msg) => {
-            tracing::trace!("{}", msg.content);
+        Event::InteractionCreate(slash) => {
+            slash::handle(slash.0, Arc::clone(&ctx)).await?
         }
         Event::Ready(r) => {
             if let Some(s) = r.shard {
