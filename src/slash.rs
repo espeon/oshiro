@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
+use futures::Future;
 use tokio::sync::Mutex;
 use twilight_model::{
     application::{
-        command::{Command, CommandOption, CommandType, CommandOptionType},
+        command::{Command, CommandOption, CommandOptionType, CommandType},
         interaction::{Interaction, InteractionData, InteractionType},
     },
     channel::message::MessageFlags,
@@ -16,60 +17,86 @@ use crate::{
     ctx::OshiroContext,
 };
 
-pub fn commands() -> Vec<Command> {
-    vec![
-        Command {
-            application_id: None,
-            default_member_permissions: None,
-            dm_permission: Some(true),
-            description: "Ping times".to_owned(),
-            description_localizations: None,
-            guild_id: None,
-            id: None,
-            kind: CommandType::ChatInput,
-            name: "ping".to_owned(),
-            name_localizations: None,
-            options: vec![],
-            version: Id::new(1),
-            nsfw: None,
-        },
-        Command {
-            application_id: None,
-            default_member_permissions: None,
-            dm_permission: Some(true),
-            description: "Uwuify a piece of text".to_owned(),
-            description_localizations: None,
-            guild_id: None,
-            id: None,
-            kind: CommandType::ChatInput,
-            name: "uwu".to_owned(),
-            name_localizations: None,
-            options: vec![CommandOption {
-                autocomplete: None,
-                channel_types: None,
-                choices: None,
-                description: "The text you want to process".to_owned(),
+pub type SlashCommandFn = Box<dyn Fn(CommandContext) -> SlashCommandResultOuter + Send + Sync>;
+pub type SlashCommandResultOuter = Pin<Box<dyn Future<Output = OshiroResult> + Send>>;
+
+pub struct CommandWrapper {
+    pub command: Command,
+    pub function: SlashCommandFn,
+}
+
+impl From<CommandWrapper> for Command {
+    fn from(cmd_wrapper: CommandWrapper) -> Self {
+        cmd_wrapper.command
+    }
+}
+
+pub fn commands() -> HashMap<String, CommandWrapper> {
+    let mut commands = HashMap::new();
+    commands.insert(
+        "ping".to_string(),
+        CommandWrapper {
+            command: Command {
+                application_id: None,
+                default_member_permissions: None,
+                dm_permission: Some(true),
+                description: "Get the current ping to Discord".to_owned(),
                 description_localizations: None,
-                kind: CommandOptionType::String,
-                max_length: None,
-                max_value: None,
-                min_length: None,
-                min_value: None,
-                name: "text".to_owned(),
+                guild_id: None,
+                id: None,
+                kind: CommandType::ChatInput,
+                name: "ping".to_owned(),
                 name_localizations: None,
-                options: None,
-                required: Some(true)
-            }],
-            version: Id::new(1),
-            nsfw: None,
+                options: vec![],
+                version: Id::new(1),
+                nsfw: None,
+            },
+            function: Box::new(move |ctx| Box::pin(crate::cmd::ping(ctx))),
         },
-    ]
+    );
+    commands.insert(
+        "uwu".to_string(),
+        CommandWrapper {
+            command: Command {
+                application_id: None,
+                default_member_permissions: None,
+                dm_permission: Some(true),
+                description: "Uwuify a piece of text".to_owned(),
+                description_localizations: None,
+                guild_id: None,
+                id: None,
+                kind: CommandType::ChatInput,
+                name: "uwu".to_owned(),
+                name_localizations: None,
+                options: vec![CommandOption {
+                    autocomplete: None,
+                    channel_types: None,
+                    choices: None,
+                    description: "The text you want to process".to_owned(),
+                    description_localizations: None,
+                    kind: CommandOptionType::String,
+                    max_length: None,
+                    max_value: None,
+                    min_length: None,
+                    min_value: None,
+                    name: "text".to_owned(),
+                    name_localizations: None,
+                    options: None,
+                    required: Some(true),
+                }],
+                version: Id::new(1),
+                nsfw: None,
+            },
+            function: Box::new(move |ctx| Box::pin(crate::cmd::uwu(ctx))),
+        },
+    );
+    commands
 }
 
 pub async fn handle(slash: Interaction, ctx: Arc<Mutex<OshiroContext>>) -> OshiroResult<()> {
     let slash = match slash.kind {
         InteractionType::Ping => {
-            tracing::warn!("Got slash ping!");
+            tracing::warn!("Got a ping!");
             return Ok(());
         }
         InteractionType::ApplicationCommand => slash,
@@ -98,21 +125,16 @@ pub async fn handle(slash: Interaction, ctx: Arc<Mutex<OshiroContext>>) -> Oshir
     };
 
     tracing::info!("Slash command used: {}", name);
-    // TODO: replace this with a better type of command matching system
-    match name {
-        "ping" => {
-            tracing::info!("ping");
-            crate::cmd::ping(cctx).await
-        }
-        "uwu" => {
-            tracing::info!("uwu");
-            crate::cmd::uwu(cctx).await
-        }
-        _ => {
+    match commands().get(name) {
+        Some(c) => {
+            tracing::info!("Executing command {}", name);
+            (c.function)(cctx).await?;
+        },
+        None => {
             tracing::warn!("Unhandled command! {:?}", slash);
             return Ok(());
         }
-    }?;
+    }
     Ok(())
 }
 

@@ -40,8 +40,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let interaction = http.interaction(current_app.id);
 
     interaction
-    .set_global_commands(&slash::commands())
-    .await?;
+        .set_global_commands(
+            &slash::commands()
+                .into_iter()
+                .map(|c| c.1.command)
+                .collect::<Vec<twilight_model::application::command::Command>>(),
+        )
+        .await?;
 
     let intents =
         Intents::MESSAGE_CONTENT | Intents::GUILD_MESSAGES | Intents::GUILD_MESSAGE_REACTIONS;
@@ -101,7 +106,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         http,
         cache: arc_cache,
         shard_latency: latency,
-        app_id: current_app.id
+        app_id: current_app.id,
     }));
 
     let mut event_stream = ShardEventStream::new(shards.iter_mut());
@@ -123,10 +128,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         let event = match event_result {
             Ok(e) => e,
             Err(source) => {
-                tracing::warn!(?source, "error receiving event");
-
                 if source.is_fatal() {
+                    tracing::error!(?source, "fatal error receiving event:");
                     break;
+                } else {
+                    tracing::warn!(?source, "error receiving event:");
                 }
 
                 continue;
@@ -160,9 +166,7 @@ async fn handle_event(
                 .parse_command(&prefix, msg, Arc::clone(&ctx))
                 .await?;
         }
-        Event::InteractionCreate(slash) => {
-            slash::handle(slash.0, Arc::clone(&ctx)).await?
-        }
+        Event::InteractionCreate(slash) => slash::handle(slash.0, Arc::clone(&ctx)).await?,
         Event::Ready(r) => {
             if let Some(s) = r.shard {
                 tracing::info!("Shard {} is ready", s.number())
