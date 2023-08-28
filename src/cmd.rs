@@ -76,7 +76,7 @@ impl CommandFramework {
         )
         .await?;
         cmd!(f, ping, "ping", "just 4 fun").await?;
-        (cmd!(f, uwu, "uwu", "uwuifies strings xD")).await?;
+        cmd!(f, uwu, "uwu", "uwuifies strings xD").await?;
         Ok(f)
     }
 
@@ -100,7 +100,10 @@ impl CommandFramework {
         tracing::trace!("{:?}", self.commands.keys());
         let possible_cmd = message.split(' ').next().unwrap_or("No command specified");
         if self.commands.contains_key(possible_cmd) {
-            let v = self.commands.get(possible_cmd).unwrap();
+            let v = match self.commands.get(possible_cmd){
+                Some(e) => e,
+                None => {tracing::info!("No command found for {}", possible_cmd); return Ok(())},
+            };
             let cctx = CommandContext {
                 command_type: CommandType::TEXT,
                 oshiro: Arc::clone(&ctx),
@@ -257,13 +260,19 @@ pub async fn uwu(ctx: CommandContext) -> OshiroResult<()> {
         },
         CommandType::TEXT => ctx.stripped.expect("text command"),
     };
+
+    // multiple string replacements
+    // str::replace replaces every instance
     let step1 = start_string
         .to_lowercase()
-        .replace(['l', 'r'], "w")
+        .replace(['l', 'r', 'v'], "w")
         .replace("fu", "fwu")
         .replace("na", "nya")
         .replace("ove", "uv");
 
+
+    // add a "y-" to the beginning of a word every *other* time 
+    // a "y" shows up at the beginning of a word
     let mut dashy = true;
     let mut step2: Vec<String> = Vec::new();
     step1.split(' ').for_each(|word| {
