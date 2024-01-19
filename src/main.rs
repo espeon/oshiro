@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             ResourceType::MESSAGE
                 | ResourceType::CHANNEL
                 | ResourceType::MEMBER
-                | ResourceType::GUILD,
+                | ResourceType::GUILD
         )
         .build();
 

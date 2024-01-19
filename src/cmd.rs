@@ -74,6 +74,8 @@ impl CommandFramework {
         .await?;
         cmd!(f, ping, "ping", "just 4 fun").await?;
         cmd!(f, uwu, "uwu", "uwuifies strings xD").await?;
+        let guild_info = crate::commands::system::guild_info;
+        cmd!(f, guild_info, "guild_info", "get info about the guild").await?;
         Ok(f)
     }
 
@@ -97,9 +99,12 @@ impl CommandFramework {
         tracing::trace!("{:?}", self.commands.keys());
         let possible_cmd = message.split(' ').next().unwrap_or("No command specified");
         if self.commands.contains_key(possible_cmd) {
-            let v = match self.commands.get(possible_cmd){
+            let v = match self.commands.get(possible_cmd) {
                 Some(e) => e,
-                None => {tracing::info!("No command found for {}", possible_cmd); return Ok(())},
+                None => {
+                    tracing::info!("No command found for {}", possible_cmd);
+                    return Ok(());
+                }
             };
             let cctx = CommandContext {
                 command_type: CommandType::TEXT,
