@@ -5,9 +5,7 @@ use tokio::sync::Mutex;
 use twilight_model::{
     application::{
         command::{Command, CommandOption, CommandOptionType, CommandType},
-        interaction::{
-            Interaction, InteractionData, InteractionType,
-        },
+        interaction::{Interaction, InteractionData, InteractionType},
     },
     channel::message::{Embed, MessageFlags},
     http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType},
@@ -59,7 +57,9 @@ pub fn commands() -> HashMap<String, CommandWrapper> {
                 version: Id::new(1),
                 nsfw: None,
             },
-            function: Some(Box::new(move |ctx| Box::pin(crate::commands::system::ping(ctx)))),
+            function: Some(Box::new(move |ctx| {
+                Box::pin(crate::commands::system::ping(ctx))
+            })),
             subcommands: None,
         },
     );
@@ -164,7 +164,9 @@ pub fn commands() -> HashMap<String, CommandWrapper> {
                 let mut subcommands: HashMap<String, CommandGroup> = HashMap::new();
                 subcommands.insert(
                     "info".to_string(),
-                    CommandGroup::Command(Box::new(move |ctx| Box::pin(crate::commands::system::guild_info(ctx)))),
+                    CommandGroup::Command(Box::new(move |ctx| {
+                        Box::pin(crate::commands::system::guild_info(ctx))
+                    })),
                 );
                 subcommands
             }),
@@ -181,9 +183,7 @@ pub async fn handle(slash: Interaction, ctx: Arc<Mutex<OshiroContext>>) -> Oshir
         }
         InteractionType::ApplicationCommand => Some(slash),
         InteractionType::MessageComponent => None,
-        InteractionType::ApplicationCommandAutocomplete => {
-            None
-        }
+        InteractionType::ApplicationCommandAutocomplete => None,
         InteractionType::ModalSubmit => None,
         _ => None,
     };
@@ -235,43 +235,50 @@ pub async fn handle(slash: Interaction, ctx: Arc<Mutex<OshiroContext>>) -> Oshir
     };
 
     tracing::info!("Slash command used: {}", fname);
+    // TODO: simplify this mess
+    // Get the list of commands
     let c = commands();
+
+    // Try to get the function associated with the command name
     let fun = match c.get(name) {
+        // If the command exists
         Some(c) => {
-            // check if command name provided is a subcommand
+            // Check if the command name provided is a subcommand
             if alloptions.len() > 1 {
                 let cmd = alloptions[1];
-                // check if subcommand exists
+                // Check if there are subcommands
                 match c.subcommands {
+                    // If the subcommand exists
                     Some(ref subcommands) => {
-                        // check if subcommand is a subcommand
+                        // Check if the subcommand is a subcommand
                         match subcommands.get(cmd) {
-                            // if it does, run it
-                            Some(CommandGroup::Command(f)) => {
-                                f
-                            }
+                            Some(CommandGroup::Command(f)) => f,
+                            // If the subcommand is a subcommand group
                             Some(CommandGroup::CommandGroup(g)) => {
-                                // check if subcommand is a subcommand group
+                                // Check if the subcommand is a subcommand group
                                 if alloptions.len() > 2 {
                                     let cmd = alloptions[2];
-                                    // check if subcommand group exists
+                                    // Check if the subcommand group exists
                                     match g.get(cmd) {
-                                        // if it does, run it
-                                        Some(CommandGroup::Command(f)) => {
-                                            f
-                                        }
+                                        Some(CommandGroup::Command(f)) => f,
                                         _ => {
                                             tracing::warn!("Error when running a command inside a subcommand group {:?}", slash);
                                             return Ok(());
                                         }
                                     }
                                 } else {
-                                    tracing::warn!("Error: Command vector is not 3 units long {:?}", slash);
+                                    tracing::warn!(
+                                        "Error: Command name is not three words long {:?}",
+                                        slash
+                                    );
                                     return Ok(());
                                 }
                             }
                             None => {
-                                tracing::warn!("Could not find the command inside a subcommand {:?}", slash);
+                                tracing::warn!(
+                                    "Could not find the command inside a subcommand {:?}",
+                                    slash
+                                );
                                 return Ok(());
                             }
                         }
@@ -282,24 +289,23 @@ pub async fn handle(slash: Interaction, ctx: Arc<Mutex<OshiroContext>>) -> Oshir
                     }
                 }
             } else {
+                // If the command is not a subcommand, try to get its function
                 match &c.function {
-                    Some(f) => {
-                        f
-                    }
+                    // If the function exists, run it
+                    Some(f) => f,
                     None => {
                         tracing::warn!("Unhandled command! {:?}", slash);
                         return Ok(());
                     }
                 }
             }
-            
         }
+        // If the command does not exist, log a warning and return
         None => {
             tracing::warn!("Unhandled command! {:?}", slash);
             return Ok(());
         }
     };
-
     // run the command
     match (fun)(cctx).await {
         Ok(_) => {}
@@ -308,7 +314,11 @@ pub async fn handle(slash: Interaction, ctx: Arc<Mutex<OshiroContext>>) -> Oshir
             // report the command to the user
             let resp = error(&format!("Error when running a command {:?}", e));
             if let Some(slash) = slash {
-                ctx.lock().await.interaction().create_response(slash.id, &slash.token, &resp).await?;
+                ctx.lock()
+                    .await
+                    .interaction()
+                    .create_response(slash.id, &slash.token, &resp)
+                    .await?;
             }
         }
     }

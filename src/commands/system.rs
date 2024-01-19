@@ -1,10 +1,13 @@
+use tokio::time;
+
 use crate::{
     cmd::{CommandContext, OshiroResult},
     helper::{get_cdn_guild_asset, Timer},
     slash::{self, message},
 };
-use twilight_model::user::User;
 use twilight_util::{builder::embed::*, snowflake::Snowflake};
+
+use heim::{process, units, memory::memory};
 
 pub async fn ping(ctx: CommandContext) -> OshiroResult<()> {
     let oshi = ctx.oshiro.lock().await;
@@ -74,9 +77,63 @@ pub async fn ping(ctx: CommandContext) -> OshiroResult<()> {
 
 pub async fn stats(ctx: CommandContext) -> OshiroResult {
     let oshi = ctx.oshiro.lock().await;
+    let platform = heim::host::platform().await?;
+    let process = process::current().await.unwrap();
+    let memory = memory().await.unwrap();
+
+    // measure cpu usage
+    let cpu_1 = process.cpu_usage().await.unwrap();
+
+    time::sleep(time::Duration::from_millis(100)).await;
+
+    let cpu_2 = process.cpu_usage().await.unwrap();
+
     let embed = EmbedBuilder::new()
-        .title("running on tiny horse")
+        .title("oshiro")
+        .field(
+            EmbedFieldBuilder::new(
+                "system",
+                format!(
+                    "running on {} {} ({})",
+                    platform.system(),
+                    platform.release(),
+                    platform.hostname(),
+                ),
+            )
+        )
+        .field(
+            EmbedFieldBuilder::new(
+                "cpu",
+                format!(
+                    "{} cores, {}% usage",
+                    num_cpus::get(),
+                    (cpu_2 - cpu_1).get::<units::ratio::percent>().round(),
+                ),
+            )
+        )
+        .field(
+            EmbedFieldBuilder::new(
+                "memory",
+                format!(
+                    "{:.2} MB used, {:.2} GB total",
+                    process.memory().await.unwrap().rss().get::<units::information::megabyte>(),
+                    memory.total().get::<units::information::gigabyte>(),
+                ),
+            )
+        )
+        .field(
+            EmbedFieldBuilder::new(
+                "cache",
+                format!(
+                    "{} guilds, {} users, {} channels",
+                    oshi.cache.stats().guilds(),
+                    oshi.cache.stats().users(),
+                    oshi.cache.stats().channels(),
+                ),
+            )
+        )
         .image(ImageSource::url("https://i.imgur.com/V6whkQN.png")?)
+        .footer(EmbedFooterBuilder::new("running on tiny horse"))
         .validate()?
         .build();
     let embeds = vec![embed];
@@ -121,7 +178,7 @@ pub async fn guild_info(ctx: CommandContext) -> OshiroResult {
         .model()
         .await?;
     // get cache guild object
-    let cache_guild = oshi.cache.guild(guild_id);
+    //let cache_guild = oshi.cache.guild(guild_id);
 
     // set up the embed
     let embed = EmbedBuilder::new();
@@ -169,18 +226,15 @@ pub async fn guild_info(ctx: CommandContext) -> OshiroResult {
     dbg!(oshi.cache.guild_channels(guild_id));
 
     // channel count
+    let mut ccount = 0;
+    oshi.cache.guild_channels(guild_id).iter().for_each(|c| {
+        c.iter().for_each(|_| {
+            ccount += 1;
+        })
+    });
     let embed = embed.field(EmbedFieldBuilder::new(
         "channels",
-        match oshi.cache.guild_channels(guild_id) {
-            Some(channels) => {
-                let mut channel_count = 0;
-                for _ in channels.iter() {
-                    channel_count += 1;
-                }
-                format!("{}", channel_count)
-            }
-            None => "could not fetch".to_string(),
-        },
+        format!("{} (incl categories)", ccount),
     ));
 
     // member count

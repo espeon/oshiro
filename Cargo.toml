@@ -21,6 +21,8 @@ tracing = "0.1.37"
 # My CI is on an extremely old machine which doesn't have support
 simd-json = {version = "0.7.0", features = ["allow-non-simd"]}
 twilight-util = { version = "0.15.2", features = ["full"] }
+heim = { git = "https://github.com/heim-rs/heim", features = ["full"] }
+num_cpus = "1.0"
 
 [dependencies.tokio]
 version = "^1.0"

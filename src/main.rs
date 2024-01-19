@@ -50,12 +50,35 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         )
         .await?;
 
-    let intents =
-        Intents::MESSAGE_CONTENT | Intents::GUILD_MESSAGES | Intents::GUILD_MESSAGE_REACTIONS;
-    let flags = EventTypeFlags::MESSAGE_CREATE
-        | EventTypeFlags::READY
+    let intents = Intents::GUILDS
+        | Intents::GUILD_MEMBERS
+        | Intents::GUILD_MESSAGES
+        | Intents::DIRECT_MESSAGES
+        | Intents::MESSAGE_CONTENT;
+
+    let flags = EventTypeFlags::CHANNEL_CREATE
+        | EventTypeFlags::CHANNEL_DELETE
+        | EventTypeFlags::CHANNEL_UPDATE
+        | EventTypeFlags::GUILD_CREATE
+        | EventTypeFlags::GUILD_DELETE
+        | EventTypeFlags::GUILD_UPDATE
         | EventTypeFlags::INTERACTION_CREATE
-        | EventTypeFlags::INTERACTION_CREATE;
+        | EventTypeFlags::MEMBER_ADD
+        | EventTypeFlags::MEMBER_REMOVE
+        | EventTypeFlags::MEMBER_UPDATE
+        | EventTypeFlags::MEMBER_CHUNK
+        | EventTypeFlags::MESSAGE_CREATE
+        | EventTypeFlags::MESSAGE_DELETE
+        | EventTypeFlags::MESSAGE_DELETE_BULK
+        | EventTypeFlags::READY
+        | EventTypeFlags::ROLE_CREATE
+        | EventTypeFlags::ROLE_DELETE
+        | EventTypeFlags::ROLE_UPDATE
+        | EventTypeFlags::THREAD_CREATE
+        | EventTypeFlags::THREAD_DELETE
+        | EventTypeFlags::THREAD_UPDATE
+        | EventTypeFlags::UNAVAILABLE_GUILD
+        | EventTypeFlags::USER_UPDATE;
 
     let builder = Config::builder(token.clone(), intents)
         .event_types(flags)
@@ -89,7 +112,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 | ResourceType::CHANNEL
                 | ResourceType::MEMBER
                 | ResourceType::GUILD
+                | ResourceType::ROLE
+                | ResourceType::USER
+                | ResourceType::USER_CURRENT,
         )
+        .message_cache_size(512)
         .build();
 
     let framework = Arc::new(CommandFramework::create().await?);
@@ -165,6 +192,8 @@ async fn handle_event(
     // TODO: move good_bots to somewhere else
     let good_bots: Vec<String> = Vec::new();
     let prefix = env::var("PREFIX").expect("Expected a prefix in the environment.");
+    // update cache
+    ctx.lock().await.cache.update(&event);
     match event {
         Event::MessageCreate(msg)
             if msg.author.bot && !good_bots.contains(&msg.author.id.to_string()) =>
@@ -179,9 +208,13 @@ async fn handle_event(
         Event::MessageCreate(msg) => {
             if msg.content == format!("<@{}>", me) {
                 let context = ctx.lock().await;
-                context.http
+                context
+                    .http
                     .create_message(msg.channel_id)
-                    .content(&format!("My prefix is {}, but you can ping me as well.", &prefix))?
+                    .content(&format!(
+                        "My prefix is {}, but you can ping me as well.",
+                        &prefix
+                    ))?
                     .await?;
             }
         }
