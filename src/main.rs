@@ -17,7 +17,9 @@ use twilight_http::Client as HttpClient;
 use crate::{cmd::CommandFramework, ctx::OshiroContext};
 
 pub mod cmd;
+pub mod commands;
 pub mod ctx;
+pub mod helper;
 pub mod slash;
 
 #[tokio::main]
@@ -139,7 +141,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             }
         };
 
-        if let Err(e) = handle_event(event, Arc::clone(&oshiro_ctx), Arc::clone(&framework)).await {
+        if let Err(e) = handle_event(
+            event,
+            Arc::clone(&oshiro_ctx),
+            Arc::clone(&framework),
+            me.id.to_string(),
+        )
+        .await
+        {
             tracing::error!("Handler error: {e}");
         }
     }
@@ -151,6 +160,7 @@ async fn handle_event(
     event: Event,
     ctx: Arc<Mutex<OshiroContext>>,
     framework: Arc<CommandFramework>,
+    me: String,
 ) -> OshiroResult<()> {
     // TODO: move good_bots to somewhere else
     let good_bots: Vec<String> = Vec::new();
@@ -165,6 +175,15 @@ async fn handle_event(
             framework
                 .parse_command(&prefix, msg, Arc::clone(&ctx))
                 .await?;
+        }
+        Event::MessageCreate(msg) => {
+            if msg.content == format!("<@{}>", me) {
+                let context = ctx.lock().await;
+                context.http
+                    .create_message(msg.channel_id)
+                    .content(&format!("My prefix is {}, but you can ping me as well.", &prefix))?
+                    .await?;
+            }
         }
         Event::InteractionCreate(slash) => slash::handle(slash.0, Arc::clone(&ctx)).await?,
         Event::Ready(r) => {

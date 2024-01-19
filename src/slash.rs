@@ -7,7 +7,7 @@ use twilight_model::{
         command::{Command, CommandOption, CommandOptionType, CommandType},
         interaction::{Interaction, InteractionData, InteractionType},
     },
-    channel::message::MessageFlags,
+    channel::message::{MessageFlags, Embed},
     http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType},
     id::Id,
 };
@@ -51,7 +51,7 @@ pub fn commands() -> HashMap<String, CommandWrapper> {
                 version: Id::new(1),
                 nsfw: None,
             },
-            function: Box::new(move |ctx| Box::pin(crate::cmd::ping(ctx))),
+            function: Box::new(move |ctx| Box::pin(crate::commands::system::ping(ctx))),
         },
     );
     commands.insert(
@@ -87,7 +87,28 @@ pub fn commands() -> HashMap<String, CommandWrapper> {
                 version: Id::new(1),
                 nsfw: None,
             },
-            function: Box::new(move |ctx| Box::pin(crate::cmd::uwu(ctx))),
+            function: Box::new(move |ctx| Box::pin(crate::commands::novelty::uwu(ctx))),
+        },
+    );
+    commands.insert(
+        "stats".to_string(),
+        CommandWrapper {
+            command: Command {
+                application_id: None,
+                default_member_permissions: None,
+                dm_permission: Some(true),
+                description: "Server statistics".to_owned(),
+                description_localizations: None,
+                guild_id: None,
+                id: None,
+                kind: CommandType::ChatInput,
+                name: "stats".to_owned(),
+                name_localizations: None,
+                options: vec![],
+                version: Id::new(1),
+                nsfw: None,
+            },
+            function: Box::new(move |ctx| Box::pin(crate::commands::system::stats(ctx))),
         },
     );
     commands
@@ -167,6 +188,24 @@ pub fn message(msg: &str) -> InteractionResponse {
             content: Some(msg.to_owned()),
             custom_id: None,
             embeds: None,
+            flags: None,
+            title: None,
+            tts: None,
+        }),
+    }
+}
+
+pub fn embed(embeds: Vec<Embed>) -> InteractionResponse {
+    InteractionResponse {
+        kind: InteractionResponseType::ChannelMessageWithSource,
+        data: Some(InteractionResponseData {
+            allowed_mentions: None,
+            attachments: None,
+            choices: None,
+            components: None,
+            content: None,
+            custom_id: None,
+            embeds: Some(embeds),
             flags: None,
             title: None,
             tts: None,
